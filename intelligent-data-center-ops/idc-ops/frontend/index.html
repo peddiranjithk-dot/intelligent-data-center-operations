@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Intelligent Data Center Operations</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
+<style>
+  :root {
+    --bg: #0a121c;
+    --panel: #111d2c;
+    --panel-raised: #16243620;
+    --line: #223347;
+    --text: #dce7f0;
+    --muted: #5c7488;
+    --cyan: #4fd1c5;
+    --amber: #f5a623;
+    --red: #e5484d;
+    --mono: 'IBM Plex Mono', monospace;
+    --sans: 'Space Grotesk', sans-serif;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: radial-gradient(ellipse at top, #0d1826 0%, #080e16 60%);
+    color: var(--text);
+    font-family: var(--sans);
+    min-height: 100vh;
+  }
+
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 20px 32px;
+    border-bottom: 1px solid var(--line);
+    background: linear-gradient(180deg, #0d1826, #0a121c);
+  }
+
+  .brand {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+  }
+
+  .brand .glyph {
+    width: 10px; height: 10px;
+    background: var(--cyan);
+    box-shadow: 0 0 12px var(--cyan);
+    display: inline-block;
+    border-radius: 2px;
+  }
+
+  .brand h1 {
+    font-size: 18px;
+    letter-spacing: 0.14em;
+    font-weight: 600;
+    margin: 0;
+    text-transform: uppercase;
+  }
+
+  .brand .sub {
+    color: var(--muted);
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 0.05em;
+  }
+
+  .fleet-summary {
+    display: flex;
+    gap: 22px;
+    font-family: var(--mono);
+    font-size: 13px;
+  }
+
+  .fleet-summary .stat {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .dot { width: 8px; height: 8px; border-radius: 50%; }
+  .dot.healthy { background: var(--cyan); }
+  .dot.warning { background: var(--amber); }
+  .dot.critical { background: var(--red); box-shadow: 0 0 8px var(--red); }
+
+  main {
+    display: grid;
+    grid-template-columns: 1fr 340px;
+    gap: 1px;
+    background: var(--line);
+  }
+
+  .racks-panel, .side-panel {
+    background: var(--bg);
+    padding: 24px 32px;
+  }
+
+  .racks-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 20px;
+  }
+
+  .rack {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    overflow: hidden;
+  }
+
+  .rack-label {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    color: var(--muted);
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--line);
+    text-transform: uppercase;
+  }
+
+  .rack-body { padding: 10px; display: flex; flex-direction: column; gap: 6px; }
+
+  .unit {
+    display: grid;
+    grid-template-columns: 42px 1fr auto;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 10px;
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    background: #0d1826;
+    cursor: pointer;
+    transition: border-color 0.15s ease, transform 0.1s ease;
+  }
+
+  .unit:hover { border-color: var(--cyan); transform: translateX(2px); }
+  .unit.selected { border-color: var(--cyan); box-shadow: inset 0 0 0 1px var(--cyan); }
+
+  .unit .u-tag {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--muted);
+  }
+
+  .unit .u-id {
+    font-family: var(--mono);
+    font-size: 12.5px;
+    font-weight: 500;
+  }
+
+  .unit .u-role {
+    font-size: 10px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    display: block;
+  }
+
+  .unit .u-readout {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--muted);
+    text-align: right;
+    line-height: 1.5;
+  }
+
+  .status-pill {
+    width: 7px; height: 7px; border-radius: 50%;
+    display: inline-block; margin-right: 6px;
+  }
+  .status-pill.healthy { background: var(--cyan); }
+  .status-pill.critical { background: var(--red); box-shadow: 0 0 6px var(--red); }
+
+  .side-panel h2 {
+    font-size: 12px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin: 0 0 14px 0;
+  }
+
+  #detail-chart-wrap {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 14px;
+    margin-bottom: 24px;
+    min-height: 200px;
+  }
+
+  #detail-title {
+    font-family: var(--mono);
+    font-size: 13px;
+    margin-bottom: 10px;
+    color: var(--text);
+  }
+
+  #detail-empty {
+    color: var(--muted);
+    font-family: var(--mono);
+    font-size: 12px;
+    padding: 40px 0;
+    text-align: center;
+  }
+
+  .log {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    max-height: 420px;
+    overflow-y: auto;
+  }
+
+  .log-entry {
+    border-left: 2px solid var(--red);
+    padding: 6px 10px;
+    background: var(--panel);
+    border-radius: 0 4px 4px 0;
+  }
+
+  .log-entry .t {
+    color: var(--muted);
+    margin-right: 8px;
+  }
+
+  .log-empty {
+    color: var(--muted);
+    font-family: var(--mono);
+    font-size: 12px;
+  }
+
+  ::-webkit-scrollbar { width: 8px; }
+  ::-webkit-scrollbar-thumb { background: var(--line); border-radius: 4px; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand">
+    <span class="glyph"></span>
+    <div>
+      <h1>Intelligent Data Center Operations</h1>
+      <div class="sub">live fleet telemetry &middot; anomaly detection</div>
+    </div>
+  </div>
+  <div class="fleet-summary" id="fleet-summary">
+    <div class="stat"><span class="dot healthy"></span><span id="count-healthy">0</span> healthy</div>
+    <div class="stat"><span class="dot critical"></span><span id="count-critical">0</span> critical</div>
+  </div>
+</header>
+
+<main>
+  <section class="racks-panel">
+    <div class="racks-grid" id="racks-grid"></div>
+  </section>
+
+  <aside class="side-panel">
+    <h2>Server Detail</h2>
+    <div id="detail-chart-wrap">
+      <div id="detail-title"></div>
+      <div id="detail-empty">Select a server to inspect its metrics</div>
+      <canvas id="detail-chart" style="display:none;"></canvas>
+    </div>
+
+    <h2>Anomaly Feed</h2>
+    <div class="log" id="anomaly-log">
+      <div class="log-empty">No anomalies detected yet.</div>
+    </div>
+  </aside>
+</main>
+
+<script>
+const API = "";
+let selectedServer = null;
+let chart = null;
+
+async function fetchJSON(path) {
+  const res = await fetch(API + path);
+  return res.json();
+}
+
+function statusFor(row) {
+  return row.injected_anomaly ? "critical" : "healthy";
+}
+
+async function renderRacks() {
+  const snapshot = await fetchJSON("/api/snapshot");
+  const byRack = {};
+  for (const row of snapshot) {
+    byRack[row.rack] = byRack[row.rack] || [];
+    byRack[row.rack].push(row);
+  }
+
+  let healthy = 0, critical = 0;
+  const grid = document.getElementById("racks-grid");
+  grid.innerHTML = "";
+
+  Object.keys(byRack).sort().forEach(rackId => {
+    const rackEl = document.createElement("div");
+    rackEl.className = "rack";
+    const label = document.createElement("div");
+    label.className = "rack-label";
+    label.textContent = `Rack ${rackId}`;
+    rackEl.appendChild(label);
+
+    const body = document.createElement("div");
+    body.className = "rack-body";
+
+    byRack[rackId].sort((a,b) => a.unit - b.unit).forEach(row => {
+      const status = statusFor(row);
+      if (status === "healthy") healthy++; else critical++;
+
+      const unit = document.createElement("div");
+      unit.className = "unit" + (selectedServer === row.server_id ? " selected" : "");
+      unit.onclick = () => { selectedServer = row.server_id; renderDetail(); renderRacks(); };
+      unit.innerHTML = `
+        <span class="u-tag">U${row.unit}</span>
+        <span>
+          <span class="u-id"><span class="status-pill ${status}"></span>${row.server_id}</span>
+          <span class="u-role">${row.role}</span>
+        </span>
+        <span class="u-readout">
+          ${row.cpu_pct}% cpu<br>${row.inlet_temp_c}&deg;C
+        </span>
+      `;
+      body.appendChild(unit);
+    });
+
+    rackEl.appendChild(body);
+    grid.appendChild(rackEl);
+  });
+
+  document.getElementById("count-healthy").textContent = healthy;
+  document.getElementById("count-critical").textContent = critical;
+}
+
+async function renderDetail() {
+  const wrap = document.getElementById("detail-chart-wrap");
+  const empty = document.getElementById("detail-empty");
+  const canvas = document.getElementById("detail-chart");
+  const title = document.getElementById("detail-title");
+
+  if (!selectedServer) {
+    empty.style.display = "block";
+    canvas.style.display = "none";
+    title.textContent = "";
+    return;
+  }
+
+  const series = await fetchJSON(`/api/metrics/${selectedServer}?limit=40`);
+  if (series.length === 0) return;
+
+  empty.style.display = "none";
+  canvas.style.display = "block";
+  title.textContent = `${selectedServer} — cpu / temp / power (recent)`;
+
+  const labels = series.map(r => new Date(r.timestamp * 1000).toLocaleTimeString());
+  const cpu = series.map(r => r.cpu_pct);
+  const temp = series.map(r => r.inlet_temp_c);
+  const power = series.map(r => r.power_w);
+
+  if (chart) chart.destroy();
+  chart = new Chart(canvas.getContext("2d"), {
+    type: "line",
+    data: {
+      labels,
+      datasets: [
+        { label: "CPU %", data: cpu, borderColor: "#4fd1c5", tension: 0.3, pointRadius: 0, borderWidth: 2 },
+        { label: "Temp °C", data: temp, borderColor: "#f5a623", tension: 0.3, pointRadius: 0, borderWidth: 2 },
+        { label: "Power W", data: power, borderColor: "#e5484d", tension: 0.3, pointRadius: 0, borderWidth: 2, yAxisID: 'y1' },
+      ]
+    },
+    options: {
+      responsive: true,
+      animation: false,
+      interaction: { mode: "index", intersect: false },
+      scales: {
+        x: { ticks: { color: "#5c7488", maxTicksLimit: 6 }, grid: { color: "#223347" } },
+        y: { ticks: { color: "#5c7488" }, grid: { color: "#223347" } },
+        y1: { position: "right", ticks: { color: "#5c7488" }, grid: { display: false } },
+      },
+      plugins: { legend: { labels: { color: "#dce7f0", font: { family: "IBM Plex Mono", size: 11 } } } }
+    }
+  });
+}
+
+async function renderAnomalies() {
+  const anomalies = await fetchJSON("/api/anomalies?limit=25");
+  const log = document.getElementById("anomaly-log");
+  if (anomalies.length === 0) {
+    log.innerHTML = '<div class="log-empty">No anomalies detected yet.</div>';
+    return;
+  }
+  log.innerHTML = anomalies.map(a => {
+    const t = new Date(a.timestamp * 1000).toLocaleTimeString();
+    return `<div class="log-entry"><span class="t">${t}</span>${a.message}</div>`;
+  }).join("");
+}
+
+async function tick() {
+  await renderRacks();
+  await renderAnomalies();
+  if (selectedServer) await renderDetail();
+}
+
+tick();
+setInterval(tick, 3000);
+</script>
+
+</body>
+</html>
